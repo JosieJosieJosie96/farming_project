@@ -11,8 +11,25 @@ client = MongoClient("mongodb://localhost:27017/")
 db = client["image_db"]
 collection = db["metadata"]
 
+def sanitize_keys(d):
+    """Replace invalid MongoDB keys recursively."""
+    if isinstance(d, dict):
+        new_dict = {}
+        for k, v in d.items():
+            new_key = k.replace('.', '_').replace('$', '_')
+            new_dict[new_key] = sanitize_keys(v)
+        return new_dict
+    elif isinstance(d, list):
+        return [sanitize_keys(i) for i in d]
+    else:
+        return d
+
 def extract_metadata(image_path: Path):
-    result = subprocess.run(["exiftool", "-j", str(image_path)], capture_output=True, text=True)
+    result = subprocess.run(
+    [r"C:\Users\waltr\Downloads\exiftool.exe\exiftool-13.29_32\exiftool.exe", "-j", str(image_path)],
+    capture_output=True,
+    text=True
+)
     return json.loads(result.stdout)[0] if result.stdout else {}
 
 @app.command()
@@ -21,12 +38,13 @@ def tag_image(path: Path, tag: str):
     if not path.exists():
         print(f"[red]File {path} does not exist[/red]")
         return
-
     metadata = extract_metadata(path)
     metadata["tag"] = tag
     metadata["filename"] = path.name
-    collection.insert_one(metadata)
+    sanitized_metadata = sanitize_keys(metadata)
+    collection.insert_one(sanitized_metadata)
     print(f"[green]Tagged {path.name} with '{tag}'[/green]")
+
 
 @app.command()
 def list_tags():
@@ -36,3 +54,5 @@ def list_tags():
 
 if __name__ == "__main__":
     app()
+
+
